@@ -1,27 +1,124 @@
 import os
 import sys
 import threading
+import subprocess
+
+from enum import Enum
+
+class ParseType(Enum):
+    # SINGLE_VALUE: Only contains a single value, so does not need to parse
+    #               The key maybe given as None
+    SINGLE_VALUE         = 0
+
+    # WHITESPACE_SEPARATED: Key-value is separated by one or more whitespaces
+    #                       e.g., KEY VAL
+    #                             KEY          VAL
+    WHITESPACE_SEPARATED = 1
+    
+    # COLON_SEPARATED: Key-value is separated by a single colon, 
+    #                  and possibly with whitespace
+    #                  e.g., KEY:VAL
+    #                        KEY: VAL
+    COLON_SEPARATED      = 2
 
 class ExpHelper:
-    #NOTE: use relative path
+    ##################
+    ### PARSE TYPE ###
+    ##################
+    # SINGLE_VALUE: Only contains a single value, so does not need to parse
+    #               The key maybe given as None
+    SINGLE_VALUE         = 0
 
-    def __init__(self, basedir=".", verbose=True):
-        self.verbose = verbose
-        self.basedir = basedir
+    # WHITESPACE_SEPARATED: Key-value is separated by one or more whitespaces
+    #                       e.g., KEY VAL
+    #                             KEY          VAL
+    WHITESPACE_SEPARATED = 1
+    
+    # COLON_SEPARATED: Key-value is separated by a single colon, 
+    #                  and possibly with whitespace
+    #                  e.g., KEY:VAL
+    #                        KEY: VAL
+    COLON_SEPARATED      = 2
+    
+    ###########################
+    ### LOG/VERBOSITY LEVEL ###
+    ###########################
+    LEVEL_SILENT    = 0 # Do not print anything
+    LEVEL_ERROR     = 1 # Print in the case of failure or error
+    LEVEL_DEBUG     = 2 # Very verbose (for debug)
 
+    def __init__(self, basedir, verbosity=1):
+        # Verbosity level
+        self.verbosity = verbosity
+
+        # Basedir
+        #   - Basedir for reading/writing files
+        #   - If relative path is given, it is converted into absolute path
+        self.basedir = os.path.abspath(basedir)   
+        
+    # set_basedir: Set new basedir, converting it into absolute path
+    #   @basedir: Basedir to set 
     def set_basedir(self, basedir):
-        self.basedir = basedir
+        self.basedir = os.path.abspath(basedir)
 
-    # printout: Print message only self.verbose is set
-    #           Only used by (internal) methods
-    # @msg: message to print
-    #       single line string is recommended
-    def printout(self, msg):
-        if not self.verbose:
+    # set_value_to_file: set value to a file
+    #   @fname: filename to set
+    #   @val:   value to set, @val is converted into str type
+    #   @sudo:  write value with sudo
+    #
+    #   @return: 0 if success, non-zero otherwise
+    def set_value_to_file(self, fname, val, sudo=True):
+        path = self.__process_path(fname)
+        if not path:
+            self.__log(ExpHelper.LEVEL_ERROR, "set_value_to_file: Invalid filename")
+            return -1
+
+        cmd = "echo {} | {} dd status=none of={}".format(
+                val,
+                "sudo" if sudo else "",
+                path)
+
+        self.__log(ExpHelper.LEVEL_DEBUG, "set_value_to_file: command: {}".format(cmd))
+        
+        # TODO: replace with subprocess
+        # TODO: get result code
+        os.system(cmd)
+
+    
+    # __process_path: When a path is given, perform a simple sanity check
+    #                 and convert it into absolute path
+    #   @path: Path to process
+    #   
+    #   @return: Absolute path converted from the given path
+    #            None in the case of any failure
+    def __process_path(self, path):
+        try:
+            if path[0] == "/":
+                return path
+            else:
+                return os.path.abspath(path)
+
+        except:
+            self.__log(ExpHeler.LEVEL_ERROR, "__process_path: failed, returning None")
+            return None
+
+    # __log: Print log message
+    #   @level: Log level. Log is printed only when verbosity >= level
+    #   @msg:   Log message to print
+    def __log(self, level, msg):
+        if self.verbosity < level:
             return
-        else:
-            print("[ExpHelper] " + str(msg))
 
+        if level == ExpHelper.LEVEL_ERROR:
+            print("[ERROR]", msg)
+            return 
+
+        elif level == ExpHelper.LEVEL_DEBUG:
+            print("[DEBUG]", msg)
+            return
+
+        else:
+            return
 
     # read_value_from_file: Get a single line from the given file using @key
     #                       and then parse the line to get value
