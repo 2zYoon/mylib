@@ -3,42 +3,23 @@ import sys
 import threading
 import subprocess
 
-from enum import Enum
-
-class ParseType(Enum):
-    # SINGLE_VALUE: Only contains a single value, so does not need to parse
-    #               The key maybe given as None
-    SINGLE_VALUE         = 0
-
-    # WHITESPACE_SEPARATED: Key-value is separated by one or more whitespaces
-    #                       e.g., KEY VAL
-    #                             KEY          VAL
-    WHITESPACE_SEPARATED = 1
-    
-    # COLON_SEPARATED: Key-value is separated by a single colon, 
-    #                  and possibly with whitespace
-    #                  e.g., KEY:VAL
-    #                        KEY: VAL
-    COLON_SEPARATED      = 2
-
 class ExpHelper:
     ##################
     ### PARSE TYPE ###
     ##################
-    # SINGLE_VALUE: Only contains a single value, so does not need to parse
-    #               The key maybe given as None
-    SINGLE_VALUE         = 0
+    # PARSE_NO_PARSE: Does not need to parse, the search key maybe None
+    PARSE_NO_PARSE         = 0
 
-    # WHITESPACE_SEPARATED: Key-value is separated by one or more whitespaces
+    # PARSE_WHITESPACE: Key-value is separated by one or more whitespaces
     #                       e.g., KEY VAL
     #                             KEY          VAL
-    WHITESPACE_SEPARATED = 1
+    PARSE_WHITESPACE = 1
     
-    # COLON_SEPARATED: Key-value is separated by a single colon, 
-    #                  and possibly with whitespace
+    # PARSE_COLON: Key-value is separated by a single colon, 
+    #              and possibly with one or more whitespace
     #                  e.g., KEY:VAL
     #                        KEY: VAL
-    COLON_SEPARATED      = 2
+    PARSE_COLON      = 2
     
     ###########################
     ### LOG/VERBOSITY LEVEL ###
@@ -53,56 +34,129 @@ class ExpHelper:
 
         # Basedir
         #   - Basedir for reading/writing files
-        #   - If relative path is given, it is converted into absolute path
+        #   - If relative path is given, it is converted into the abspath with
+        #     this basedir
         self.basedir = os.path.abspath(basedir)   
         
     # set_basedir: Set new basedir, converting it into absolute path
+    #
     #   @basedir: Basedir to set 
     def set_basedir(self, basedir):
         self.basedir = os.path.abspath(basedir)
 
+    # get_basedir: Get current basedir as a string
+    #
+    #   @return: current basedir
+    def get_basedir(self):
+        return str(self.basedir)
+
     # set_value_to_file: set value to a file
-    #   @fname: filename to set
-    #   @val:   value to set, @val is converted into str type
-    #   @sudo:  write value with sudo
+    #
+    #   @fname:  filename to set
+    #   @val:    value to set, @val is converted into str type
+    #   @prefix: prefix before the command (e.g., sudo)
     #
     #   @return: 0 if success, non-zero otherwise
-    def set_value_to_file(self, fname, val, sudo=True):
+    def set_value_to_file(self, fname, val, prefix=""):
         path = self.__process_path(fname)
         if not path:
-            self.__log(ExpHelper.LEVEL_ERROR, "set_value_to_file: Invalid filename")
+            self.__log_error("set_value_to_file: Invalid filename")
             return -1
 
-        cmd = "echo {} | {} dd status=none of={}".format(
-                val,
-                "sudo" if sudo else "",
-                path)
+        cmd = "echo {} | {} dd status=none of={}".format(val, prefix, path)
 
-        self.__log(ExpHelper.LEVEL_DEBUG, "set_value_to_file: command: {}".format(cmd))
-        
-        # TODO: replace with subprocess
-        # TODO: get result code
-        os.system(cmd)
-
+        self.__log_debug("set_value_to_file: command: {}".format(cmd))
     
+        ret = os.system(cmd)
+        return ret
+
+
+    # read_value_from_file: Get a single line from the given file using @key
+    #                       and then parse the line to get value.
+    #                       This only uses first line of cat/grep output.
+    #                       If multiple separators exist, uses the last one.
+    #
+    # @fname:      file to use
+    # @key:        grep search key
+    # @parse_type: style to parse the given input
+    #   
+    # @return: returns read value (string form), None if reading was failed
+    def read_value_from_file(self, fname, key, parse_type):
+        ret = None
+
+        path = self.__process_path(fname)
+        if not path:
+            self.__log_error("read_value_from_file: Invalid filename")
+            return None
+
+        if parse_type == ExpHelper.PARSE_NO_PARSE:
+            cmd_to_read =  "cat \"{}\"".format(path)
+        else:
+            cmd_to_read = "grep \"{}\" {}".format(key, path)
+
+        # Only uses first line of output
+        result = os.popen(cmd_to_read).read().strip().split("\n")[0]
+        
+        if result == "":
+            self.__log_error("read_value_from_file: No value was found")
+            return None
+        
+        if parse_type == ExpHelper.PARSE_NO_PARSE:
+            ret = result
+        
+        elif parse_type == ExpHelper.PARSE_WHITESPACE:
+            ret = list(filter(None, result.split(" ")))[-1]
+
+        elif parse_type == ExpHelper.PARSE_COLON:
+            ret = list(filter(None, result.split(":")))[-1]
+            ret = ret.strip()
+        
+        else:
+            self.__log_error("read_value_from_file: Invalid parse type")
+            return None
+
+        self.__log_debug("read_value_from_file: read value: \"{}\"".format(ret))
+        return ret
+
+
     # __process_path: When a path is given, perform a simple sanity check
     #                 and convert it into absolute path
+    #
     #   @path: Path to process
     #   
     #   @return: Absolute path converted from the given path
     #            None in the case of any failure
     def __process_path(self, path):
+        # TODO: check existance
+        ret = ""
         try:
             if path[0] == "/":
-                return path
+                ret = path 
             else:
-                return os.path.abspath(path)
+                ret = os.path.abspath(os.path.join(self.basedir, path))
+
+            self.__log_debug("__process_path: actual path: \"{}\"".format(ret))
+            return ret
 
         except:
-            self.__log(ExpHeler.LEVEL_ERROR, "__process_path: failed, returning None")
+            self.__log_error("__process_path({}): failed, returning None".format(path))
             return None
 
+
+    # __log_error: Print error message. It wraps __log() function
+    #
+    #   @msg: Error message to print
+    def __log_error(self, msg):
+        self.__log(ExpHelper.LEVEL_ERROR, msg)
+    
+    # __log_debug: Print debug message. It wraps __log() function
+    #
+    #   @msg: Debug message to print
+    def __log_debug(self, msg):
+        self.__log(ExpHelper.LEVEL_DEBUG, msg)
+
     # __log: Print log message
+    #
     #   @level: Log level. Log is printed only when verbosity >= level
     #   @msg:   Log message to print
     def __log(self, level, msg):
@@ -119,48 +173,6 @@ class ExpHelper:
 
         else:
             return
-
-    # read_value_from_file: Get a single line from the given file using @key
-    #                       and then parse the line to get value
-    #                       This only uses first line of grep output
-    #
-    # @fname:       file to use
-    # @key:         grep search key
-    # @parse_style: style to parse the given input
-    #   SINGLE_VALUE:         The file only contains single value
-    #                         e.g., 123
-    #   WHITESPACE_SEPARATED: key and value are separated by one or more whitespaces
-    #                         e.g., SOME_KEY 123
-    #                         e.g., SOME_KEY          123
-    #   COLON_SEPARATED:      key and value are sepataed by one colon, and possibly whitespace
-    #                         e.g., SOME_KEY:123
-    #                         e.g., SOME_KEY: 123
-    #                         e.g., SOME_KEY:         123
-    #   
-    # @return: returns read value (string form), None if reading was failed
-    def read_value_from_file(self, fname, key, parse_style="WHITESPACE_SEPARATED"):
-        result = os.popen("grep \"{}\" {}".format(key, os.path.join(self.basedir, fname))).read().strip().split("\n")[0]
-        
-        if result == "":
-            self.printout("No search result was found.")
-            return None
-        
-        if parse_style == "SINGLE_VALUE":
-            return result
-        
-        elif parse_style == "WHITESPACE_SEPARATED":
-            return list(filter(None, result.split(" ")))[1]
-
-        elif parse_style == "COLON_SEPARATED":
-            return list(filter(None, result.split(":")))[1]
-        
-        else:
-            self.printout("Invalid parse style")
-            return None
-    
-    # TODO
-    def read_line_from_file(self, fname, key):
-        return os.popen("grep \"{}\" {}".format(key, os.path.join(self.basedir, fname))).read().strip().split("\n")[0]
     
 
     # get_delta_from_files: Get values from the given two files using @key
@@ -239,17 +251,3 @@ class ExpHelper:
         val = os.popen("{} cat {}".format(sudocmd, fname)).read().strip()
         return 0 if val == ref else 1
 
-
-    # set_value_to_file: set the given value to the file
-    #
-    # @cmd:    value to set
-    # @fname:  filename to set
-    # @append: append or overwrite
-    # @sudo:   write value using sudo
-    #
-    # @return: always returns 0 (it does not check if the operation was successful)
-    def set_value_to_file(self, val, fname, append=False, sudo=False):
-        append_option = "-a" if append else ""
-        sudocmd = "sudo" if sudo else ""
-
-        os.system("echo \"{}\" | {} tee {} {} >> /dev/null".format(val, sudocmd, append_option, fname))
