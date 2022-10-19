@@ -20,7 +20,13 @@ class ExpHelper:
     #                  e.g., KEY:VAL
     #                        KEY: VAL
     PARSE_COLON      = 2
-    
+
+    #################
+    ### DATA TYPE ###
+    #################
+    DTYPE_INT   = 0
+    DTYPE_FLOAT = 1
+
     ###########################
     ### LOG/VERBOSITY LEVEL ###
     ###########################
@@ -82,6 +88,8 @@ class ExpHelper:
     #   
     # @return: returns read value (string form), None if reading was failed
     def read_value_from_file(self, fname, key, parse_type):
+        parsetype = self.__convert_into_enum(parse_type)
+
         ret = None
 
         path = self.__process_path(fname)
@@ -89,7 +97,7 @@ class ExpHelper:
             self.__log_error("read_value_from_file: Invalid filename")
             return None
 
-        if parse_type == ExpHelper.PARSE_NO_PARSE:
+        if parsetype == ExpHelper.PARSE_NO_PARSE:
             cmd_to_read =  "cat \"{}\"".format(path)
         else:
             cmd_to_read = "grep \"{}\" {}".format(key, path)
@@ -101,13 +109,13 @@ class ExpHelper:
             self.__log_error("read_value_from_file: No value was found")
             return None
         
-        if parse_type == ExpHelper.PARSE_NO_PARSE:
+        if parsetype == ExpHelper.PARSE_NO_PARSE:
             ret = result
         
-        elif parse_type == ExpHelper.PARSE_WHITESPACE:
+        elif parsetype == ExpHelper.PARSE_WHITESPACE:
             ret = list(filter(None, result.split(" ")))[-1]
 
-        elif parse_type == ExpHelper.PARSE_COLON:
+        elif parsetype == ExpHelper.PARSE_COLON:
             ret = list(filter(None, result.split(":")))[-1]
             ret = ret.strip()
         
@@ -115,8 +123,44 @@ class ExpHelper:
             self.__log_error("read_value_from_file: Invalid parse type")
             return None
 
-        self.__log_debug("read_value_from_file: read value: \"{}\"".format(ret))
+        self.__log_debug("read_value_from_file: Read value: \"{}\"".format(ret))
         return ret
+
+
+    # get_delta_from_files: Get values from the given two files using @key
+    #                       and then get the difference between two values
+    #
+    # @fname_start: file to use, start
+    # @fname_end:   file to use, end
+    # @key:         grep search key
+    # @parse_type:  style to parse the given input
+    # @dtype:       data type for values (int or float)
+    #
+    # @return: returns delta value, None if reading was failed
+    def get_delta_from_files(self, fname_start, fname_end, key, parse_type, dtype):
+        datatype = self.__convert_into_enum(dtype)
+        self.__log_debug("get_delta_from_files: Data type: \"{}\"".format(dtype, datatype))
+
+        val_start = self.read_value_from_file(fname_start, key, parse_type)
+        val_end = self.read_value_from_file(fname_end, key, parse_type)
+
+        if val_start == None:
+            self.__log_error("get_delta_from_files: failed to read start value")
+            return None
+
+        if val_end == None:
+            self.__log_error("get_delta_from_files: failed to read end value")
+            return None
+
+        if datatype == ExpHelper.DTYPE_INT:
+            return int(val_end) - int(val_start)
+       
+        elif datatype == ExpHelper.DTYPE_FLOAT:
+            return float(val_end) - float(val_start)
+        
+        else:
+            self.__log_error("get_delta_from_files: Invalid datatype")
+            return None
 
 
     # __process_path: When a path is given, perform a simple sanity check
@@ -127,7 +171,6 @@ class ExpHelper:
     #   @return: Absolute path converted from the given path
     #            None in the case of any failure
     def __process_path(self, path):
-        # TODO: check existance
         ret = ""
         try:
             if path[0] == "/":
@@ -135,11 +178,16 @@ class ExpHelper:
             else:
                 ret = os.path.abspath(os.path.join(self.basedir, path))
 
-            self.__log_debug("__process_path: actual path: \"{}\"".format(ret))
+            self.__log_debug("__process_path: Actual path: \"{}\"".format(ret))
+            
+            if not os.path.exists(path):
+                self.__log_error("__process_path: {}: No file exists".format(path))
+                return None
+
             return ret
 
         except:
-            self.__log_error("__process_path({}): failed, returning None".format(path))
+            self.__log_error("__process_path: {}: Failed to process".format(path))
             return None
 
 
@@ -174,80 +222,24 @@ class ExpHelper:
         else:
             return
     
+    def __convert_into_enum(self, val):
+        mapper = {
+            "PARSE_NO_PARSE": ExpHelper.PARSE_NO_PARSE,
+            "PARSE_WHITESPACE": ExpHelper.PARSE_WHITESPACE,
+            "PARSE_COLON": ExpHelper.PARSE_COLON,
+            "DTYPE_INT": ExpHelper.DTYPE_INT,
+            "INT": ExpHelper.DTYPE_INT,
+            "DTYPE_FLOAT": ExpHelper.DTYPE_FLOAT,    
+            "FLOAT": ExpHelper.DTYPE_FLOAT,    
+        }
 
-    # get_delta_from_files: Get values from the given two files using @key
-    #                       and then get the difference between two values
-    #
-    # @fname_start:             file to use, start
-    # @fname_end:               file to use, end
-    # @key:                     grep search key
-    # @parse_style:             style to parse the given input
-    #                           (refer read_value_from_file)
-    # @dtype:                   data type for these values
-    # @fname_start_basedir:     @fname_start's basedir
-    # @fname_end_basedir:       @fname_end's basedir
-    #
-    # @return: returns delta value, None if reading was failed
-    def get_delta_from_files(self, fname_start, fname_end, key, parse_style="WHITESPACE_SEPARATED", dtype="INT", fname_start_basedir=None, fname_end_basedir=None):
-        if fname_start_basedir != None:
-            fname_start_ = os.path.join(str(fname_start_basedir), str(fname_start))
-        else:
-            fname_start_ = str(fname_start)
+        enum = mapper.get(val, None)
         
-        if fname_end_basedir != None:
-            fname_end_ = os.path.join(str(fname_end_basedir), str(fname_end))
+        if enum != None:
+            return enum
         else:
-            fname_end_ = str(fname_end)
+            return val
+        
 
 
-        val_start = self.read_value_from_file(fname_start_, key, parse_style)
-        val_end = self.read_value_from_file(fname_end_, key, parse_style)
-
-        if val_start == None or val_end == None:
-            self.printout("No search result was found")
-            return None
-
-        if dtype == "INT":
-            return int(val_end) - int(val_start)
-        elif dtype == "FLOAT":
-            return float(val_end) - float(val_end)
-        else:
-            self.printout("Invalid dtype")
-            return None
     
-    # read_value_from_cmd: get value from a command line output
-    #
-    # @cmd:         command to use
-    # @parse_style: style to parse the given input
-    #   SINGLE_VALUE:         The file only contains single value
-    #                         e.g., 123
-    #   
-    # @return: returns read value (string form), None if reading was failed
-    def read_value_from_cmd(self, cmd, parse_style="SINGLE_VALUE"):
-        result = os.popen(str(cmd)).read().strip().split("\n")[0]
-        
-        if result == "":
-            self.printout("No search result was found.")
-            return None
-        
-        if parse_style == "SINGLE_VALUE":
-            return result
-
-        else:
-            self.printout("Invalid parse style")
-            return None
-
-
-    # check_value_from_file: get the value from the file and check if the value is equal to @ref
-    #
-    # @fname:  filename to get value
-    # @ref:    value to compare
-    # @sudo:   get value using sudo
-    #
-    # @return: returns 0 if equal, otherwise 1 (including read failure)
-    def check_value_from_file(self, fname, ref, sudo=False):
-        sudocmd = "sudo" if sudo else ""
-        
-        val = os.popen("{} cat {}".format(sudocmd, fname)).read().strip()
-        return 0 if val == ref else 1
-

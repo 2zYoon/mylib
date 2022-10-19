@@ -62,11 +62,17 @@ def test_ExpHelper():
     ret = exp.read_value_from_file("tmp.txt", "key", ExpHelper.PARSE_COLON)
     assert(ret == str(4))
 
+    
+    os.system("echo 100 > tmp1.txt")
+    os.system("echo 200 > tmp2.txt")
 
+    ret = exp.get_delta_from_files("tmp1.txt", "tmp2.txt", None, ExpHelper.PARSE_NO_PARSE, "INT")
+    assert(str(ret) == str(100)) 
 
+    print("All tests passed. Cleaning up...")
 
     # cleanup
-    os.system("rm tmp.txt")
+    os.system("rm tmp.txt tmp1.txt tmp2.txt")
 
 
 
