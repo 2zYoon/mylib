@@ -1,11 +1,23 @@
 import os, sys
 
+from ExpHelper import ExpHelper
+from Color import *
+
+def cmp_list(l1, l2):
+    if len(l1) != len(l2):
+        return False
+
+    ret = True
+    
+    for i in range(len(l1)):
+        ret = ret and l1[i] == l2[i]
+
+    return ret
 
 def test_misc():
     pass
 
 def test_ExpHelper():
-    from ExpHelper import ExpHelper
     INITIAL_BASEDIR = "."
 
     exp = ExpHelper(INITIAL_BASEDIR, verbosity=ExpHelper.LEVEL_DEBUG)
@@ -69,14 +81,26 @@ def test_ExpHelper():
     ret = exp.get_delta_from_files("tmp1.txt", "tmp2.txt", None, ExpHelper.PARSE_NO_PARSE, "INT")
     assert(str(ret) == str(100)) 
 
-    print("All tests passed. Cleaning up...")
+    print("ExpHelper: All tests passed.")
 
     # cleanup
     os.system("rm tmp.txt tmp1.txt tmp2.txt")
 
+def test_Color():
+    assert(cmp_list(BLACK_RGB, [0, 0, 0]))
+    
+    assert(cmp_list(rgb_to_rgba(BLACK_RGB, 255), [0, 0, 0, 255]))
+    assert(cmp_list(rgba_to_rgb(rgb_to_rgba(BLACK_RGB, 255)), BLACK_RGB))
+    
+    assert(rgb_to_hex(RED_RGB) == 0xff0000)
+    assert(rgba_to_hex(rgb_to_rgba(RED_RGB, 255)) == 0xff0000ff)
 
+    assert(cmp_list(hex_to_rgb(0xffff00), [255, 255, 0]))
+    assert(cmp_list(hex_to_rgba(0xffff00ff), [255, 255, 0, 255]))
 
+    print("Color: All tests passed.")
 
 if __name__ == "__main__":
     test_misc()
     test_ExpHelper()
+    test_Color()

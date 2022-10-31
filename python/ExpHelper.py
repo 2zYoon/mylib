@@ -1,7 +1,5 @@
 import os
 import sys
-import threading
-import subprocess
 
 class ExpHelper:
     ##################
@@ -82,11 +80,11 @@ class ExpHelper:
     #                       This only uses first line of cat/grep output.
     #                       If multiple separators exist, uses the last one.
     #
-    # @fname:      file to use
-    # @key:        grep search key
-    # @parse_type: style to parse the given input
+    #  @fname:      file to use
+    #  @key:        grep search key
+    #  @parse_type: style to parse the given input
     #   
-    # @return: returns read value (string form), None if reading was failed
+    #  @return: returns read value (string form), None if reading was failed
     def read_value_from_file(self, fname, key, parse_type):
         parsetype = self.__convert_into_enum(parse_type)
 
@@ -130,13 +128,13 @@ class ExpHelper:
     # get_delta_from_files: Get values from the given two files using @key
     #                       and then get the difference between two values
     #
-    # @fname_start: file to use, start
-    # @fname_end:   file to use, end
-    # @key:         grep search key
-    # @parse_type:  style to parse the given input
-    # @dtype:       data type for values (int or float)
+    #  @fname_start: file to use, start
+    #  @fname_end:   file to use, end
+    #  @key:         grep search key
+    #  @parse_type:  style to parse the given input
+    #  @dtype:       data type for values (int or float)
     #
-    # @return: returns delta value, None if reading was failed
+    #  @return: returns delta value, None if reading was failed
     def get_delta_from_files(self, fname_start, fname_end, key, parse_type, dtype):
         datatype = self.__convert_into_enum(dtype)
         self.__log_debug("get_delta_from_files: Data type: \"{}\"".format(dtype, datatype))
